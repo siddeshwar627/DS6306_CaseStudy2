@@ -1,0 +1,750 @@
+---
+title: "Case Study 2"
+author: "Sid"
+date: "November 23, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,warning=FALSE,message=FALSE}
+library(readxl)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(randomForest)
+library(e1071)
+library(naivebayes)
+library(caret)
+library(tidyverse)
+library(caret)
+library(SuperLearner)
+library(gridExtra)
+library(lmtest)
+library(psych)
+library(class)
+library(corrplot)
+```
+
+####Data Importing and Cleaning
+```{r}
+# Importing CaseStudy2dataset from github 
+CaseStudy2dataset <- read.csv("https://raw.githubusercontent.com/siddeshwar627/DS6306_CaseStudy2/master/CaseStudy2-data.csv", sep = ",", header = TRUE)
+CaseStudy2CompSetNoAttrition <- read.csv("https://raw.githubusercontent.com/siddeshwar627/DS6306_CaseStudy2/master/CaseStudy2CompSet%20No%20Attrition.csv", sep = ",", header = TRUE)
+CaseStudy2CompSetNoSalary <- read.csv("https://raw.githubusercontent.com/siddeshwar627/DS6306_CaseStudy2/master/CaseStudy2CompSet%20No%20Salary.csv", sep = ",", header = TRUE)
+
+#Checking CaseStudy2dataset dimension
+dim(CaseStudy2dataset)
+# The CaseStudy2dataset has 870 observations and 36 variables
+
+#CaseStudy2dataset features
+names(CaseStudy2dataset)
+
+#CaseStudy2dataset structure
+str(CaseStudy2dataset)
+
+#First few records of the dataset
+head(CaseStudy2dataset)
+
+summary(CaseStudy2dataset)
+
+#Data cleaning by drop some columns not related to the analysis
+drops <- c("EmployeeCount", "EmployeeNumber", "Over18", "StandardHours")
+
+#As we can see from the structure we have lookup values for a few columns like Education, Environment Satisfaction, Job Involvement etc. So first we will replace these values with the actual description provided in the CaseStudy2dataset .We will also be removing a few columns from our CaseStudy2dataset which we wont be using in analysis further.
+CaseStudy2dataset <- CaseStudy2dataset %>%
+  mutate(Education = as.factor(if_else(Education == 1,"Below College", if_else(Education == 2, "College", if_else(Education == 3, "Bachelor", if_else(Education == 4, "Masters","Doctor")))))
+         ,EnvironmentSatisfaction = as.factor(if_else(EnvironmentSatisfaction == 1,"Low",if_else(EnvironmentSatisfaction == 2, "Medium", if_else(EnvironmentSatisfaction == 3, "High", "Very High"))))
+         ,JobInvolvement = as.factor(if_else(JobInvolvement == 1,"Low",if_else(JobInvolvement == 2, "Medium",if_else(JobInvolvement == 3, "High", "Very High"))))
+         ,JobSatisfaction = as.factor(if_else(JobSatisfaction == 1, "Low",if_else(JobSatisfaction == 2, "Medium",if_else(JobSatisfaction == 3, "High","Very High"))))
+         ,PerformanceRating = as.factor(if_else(PerformanceRating == 1, "Low",if_else(PerformanceRating == 2, "Good", if_else(PerformanceRating == 3, "Excellent", "Outstanding"))))
+         ,RelationshipSatisfaction = as.factor(if_else(RelationshipSatisfaction == 1, "Low",if_else(RelationshipSatisfaction == 2, "Medium", if_else(RelationshipSatisfaction == 3, "High", "Very High"))))
+         ,WorkLifeBalance = as.factor(if_else(WorkLifeBalance == 1, "Bad",if_else(WorkLifeBalance == 2, "Good", if_else(WorkLifeBalance == 3, "Better", "Best"))))
+         ,JobLevel = as.factor(JobLevel)
+         ) 
+
+CaseStudy2CompSetNoAttrition <- CaseStudy2CompSetNoAttrition %>%
+  mutate(Education = as.factor(if_else(Education == 1,"Below College", if_else(Education == 2, "College", if_else(Education == 3, "Bachelor", if_else(Education == 4, "Masters","Doctor")))))
+         ,EnvironmentSatisfaction = as.factor(if_else(EnvironmentSatisfaction == 1,"Low",if_else(EnvironmentSatisfaction == 2, "Medium", if_else(EnvironmentSatisfaction == 3, "High", "Very High"))))
+         ,JobInvolvement = as.factor(if_else(JobInvolvement == 1,"Low",if_else(JobInvolvement == 2, "Medium",if_else(JobInvolvement == 3, "High", "Very High"))))
+         ,JobSatisfaction = as.factor(if_else(JobSatisfaction == 1, "Low",if_else(JobSatisfaction == 2, "Medium",if_else(JobSatisfaction == 3, "High","Very High"))))
+         ,PerformanceRating = as.factor(if_else(PerformanceRating == 1, "Low",if_else(PerformanceRating == 2, "Good", if_else(PerformanceRating == 3, "Excellent", "Outstanding"))))
+         ,RelationshipSatisfaction = as.factor(if_else(RelationshipSatisfaction == 1, "Low",if_else(RelationshipSatisfaction == 2, "Medium", if_else(RelationshipSatisfaction == 3, "High", "Very High"))))
+         ,WorkLifeBalance = as.factor(if_else(WorkLifeBalance == 1, "Bad",if_else(WorkLifeBalance == 2, "Good", if_else(WorkLifeBalance == 3, "Better", "Best"))))
+         ,JobLevel = as.factor(JobLevel)
+         ) 
+
+CaseStudy2CompSetNoSalary <- CaseStudy2CompSetNoSalary %>%
+  mutate(Education = as.factor(if_else(Education == 1,"Below College", if_else(Education == 2, "College", if_else(Education == 3, "Bachelor", if_else(Education == 4, "Masters","Doctor")))))
+         ,EnvironmentSatisfaction = as.factor(if_else(EnvironmentSatisfaction == 1,"Low",if_else(EnvironmentSatisfaction == 2, "Medium", if_else(EnvironmentSatisfaction == 3, "High", "Very High"))))
+         ,JobInvolvement = as.factor(if_else(JobInvolvement == 1,"Low",if_else(JobInvolvement == 2, "Medium",if_else(JobInvolvement == 3, "High", "Very High"))))
+         ,JobSatisfaction = as.factor(if_else(JobSatisfaction == 1, "Low",if_else(JobSatisfaction == 2, "Medium",if_else(JobSatisfaction == 3, "High","Very High"))))
+         ,PerformanceRating = as.factor(if_else(PerformanceRating == 1, "Low",if_else(PerformanceRating == 2, "Good", if_else(PerformanceRating == 3, "Excellent", "Outstanding"))))
+         ,RelationshipSatisfaction = as.factor(if_else(RelationshipSatisfaction == 1, "Low",if_else(RelationshipSatisfaction == 2, "Medium", if_else(RelationshipSatisfaction == 3, "High", "Very High"))))
+         ,WorkLifeBalance = as.factor(if_else(WorkLifeBalance == 1, "Bad",if_else(WorkLifeBalance == 2, "Good", if_else(WorkLifeBalance == 3, "Better", "Best"))))
+         ,JobLevel = as.factor(JobLevel)
+         ) 
+
+CaseStudy2dataset <- CaseStudy2dataset[ , !(names(CaseStudy2dataset) %in% drops)]
+
+CaseStudy2CompSetNoAttrition <- CaseStudy2CompSetNoAttrition[ , !(names(CaseStudy2CompSetNoAttrition) %in% drops)]
+CaseStudy2CompSetNoAttrition = CaseStudy2CompSetNoAttrition[order(CaseStudy2CompSetNoAttrition$ID), ]
+
+colnames(CaseStudy2CompSetNoSalary)[colnames(CaseStudy2CompSetNoSalary)=="ï..ID"] <- "ID"
+CaseStudy2CompSetNoSalary <- CaseStudy2CompSetNoSalary[ , !(names(CaseStudy2CompSetNoSalary) %in% drops)]
+#CaseStudy2CompSetNoSalary = CaseStudy2CompSetNoSalary[order(CaseStudy2CompSetNoSalary$ID), ]
+
+# Converting Character Variable into Numeric Vraiables
+CaseStudy2dataset$Attrition1[CaseStudy2dataset$Attrition== "Yes"] <-1
+CaseStudy2dataset$Attrition1[CaseStudy2dataset$Attrition== "No"] <-0
+```
+
+
+```{r}
+#Get a basic idea of all the variables
+summary(CaseStudy2dataset)
+#This gives us a high level view of the CaseStudy2dataset. We can see that we dont have any NULL values in our CaseStudy2dataset. We can also see that we just have 140 attrition records out of 870 which is approx. 16%. We need to keep this ratio maintained once we split the data in test and training for our model evaluation to avoid any biases.
+str(CaseStudy2dataset)
+summary(CaseStudy2CompSetNoAttrition)
+str(CaseStudy2CompSetNoAttrition)
+summary(CaseStudy2CompSetNoSalary)
+str(CaseStudy2CompSetNoSalary)
+```
+
+From the summary, it can be seen there is no NAs in the continuous variables. Struction of the dataframe CaseStudy2dataset shows, variables Attrition, BusinessTravel, Department, EducationField, Gender, JobRole, MatitalStatus, Overtime, are treated as factors.
+
+
+```{r}
+#Separate continuous and categorical variables for analysis
+CaseStudy2dataset_conti <- CaseStudy2dataset[, !sapply(CaseStudy2dataset, is.factor)]
+CaseStudy2dataset_categ <- CaseStudy2dataset[, sapply(CaseStudy2dataset, is.factor)]
+```
+
+
+####Correlation of predictors
+
+```{r}
+#correlation of all the continuous variables, column of Attrition is first dropped.
+correlation <- cor(CaseStudy2dataset_conti)
+#correlation plot
+corrplot(correlation)
+```
+
+From correlation plot of continuous variables, we can see that there are positive correlations between variables, MonthlyIncome, JobLevel, TotalWorkingYears, Age, YearsAtCompany, YearInCurrentRole, YearsSinceLastPromotion and YearsWithCurrentManager.
+
+```{r}
+library(GoodmanKruskal)
+cat_cor<- GKtauDataframe(CaseStudy2dataset_categ)
+plot(cat_cor, corrColors = "blue")
+```
+
+From correlation plot of categorical variables, we can see there is a high correlation between Department and JobRole.
+
+###Objective 1 Predict Attrition
+```{r}
+# Employee Personal Demographics - Numerical Variables
+p1 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(Age), binwidth = 5, fill = "blue",col = "black")
+p2 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(DistanceFromHome), binwidth = 5, fill = "blue",col = "black")
+p3 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(NumCompaniesWorked), binwidth = 2, fill = "blue",col = "black")
+p4 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(TotalWorkingYears), binwidth = 4, fill = "blue",col = "black")
+
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+#Observations :
+#We see that the age is more or less normally distributed.
+#Distance from Home, Num of Companies worked and Total working Years is right skewed 
+
+# Employee Billing Rate Demographics - Numerical Variables
+p1 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(HourlyRate), binwidth = 5, fill = "blue",col = "black")
+p2 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(DailyRate), binwidth = 100, fill = "blue",col = "black")
+p3 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(MonthlyRate), binwidth = 1000, fill = "blue",col = "black")
+
+grid.arrange(p1, p2, p3, nrow = 3)
+#Observations :
+#There seems to be no clear cut pattern observed in these rates.
+
+#Employee Work Demographics - Numerical Variables
+p1 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(MonthlyIncome), binwidth = 1000, fill = "blue",col = "black")
+p2 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(PercentSalaryHike), binwidth = 1, fill = "blue",col = "black")
+p3 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(YearsAtCompany), binwidth = 2, fill = "blue",col = "black")
+p4 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(YearsInCurrentRole), binwidth = 2, fill = "blue",col = "black")
+p5 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(YearsSinceLastPromotion), binwidth = 2, fill = "blue",col = "black")
+p6 <- ggplot(CaseStudy2dataset) + geom_histogram(aes(YearsWithCurrManager), binwidth = 2, fill = "blue",col = "black")
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+#Observations:
+#All 6 variables are right skewed 
+
+#Employee Personal Demographics - Categorical Variables
+p1<- CaseStudy2dataset %>%
+  group_by(Gender) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(Gender), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Gender") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 900))
+
+p2<- CaseStudy2dataset %>%
+  group_by(Education) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(Education), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Education") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 650))
+
+p3 <- CaseStudy2dataset %>%
+  group_by(EducationField) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(EducationField), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Education Field") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 650))
+
+p4 <- CaseStudy2dataset %>%
+  group_by(MaritalStatus) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(MaritalStatus), y = counts)) + geom_bar(stat = 'identity', fill = "blue")+ ggtitle("Marital Status") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 750))
+
+p5 <- CaseStudy2dataset %>%
+  group_by(RelationshipSatisfaction) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(RelationshipSatisfaction), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Relationship Satisfaction") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())+ scale_y_continuous(limits = c(0, 500))
+
+p6 <- CaseStudy2dataset %>%
+  group_by(WorkLifeBalance) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(WorkLifeBalance), y = counts)) + geom_bar(stat = 'identity', fill = "blue")+ ggtitle("Work Life Balance") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 950))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+# Observations :
+# More than 50% of Male population.
+# More than 36% is having a bachelors degree and 27% is having a masters degree.
+# Almost 70% of the employees come from Life Sciences and Medical background.
+# 47% of the employees are marrried whereas 22% of them are divorced.
+# More than 30% of the employees have a High or Very High Relationship Satisfaction.
+# More than 60% of the employees feel they have a better work life balance.
+
+#Employee Work Demographics - Categorical Variables
+p1 <- CaseStudy2dataset %>%
+  group_by(BusinessTravel) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(BusinessTravel), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Business Travel") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ theme(plot.title = element_text(size =10),axis.text.x = element_text(size =10,angle = 45, hjust = 1),axis.title.x=element_blank())+ scale_y_continuous(limits = c(0, 1100))
+
+
+
+p2 <- CaseStudy2dataset %>%
+  group_by(EnvironmentSatisfaction) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(EnvironmentSatisfaction), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Environment Satisfaction") + geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =10,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 500))
+
+p3 <- CaseStudy2dataset %>%
+  group_by(JobInvolvement) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(JobInvolvement), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Job Involvement") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ theme(plot.title = element_text(size =10),axis.text.x = element_text(size =10,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 900))
+
+
+p4 <- CaseStudy2dataset %>%
+  group_by(JobSatisfaction) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(JobSatisfaction), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Job Satisfaction") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 500))
+
+p5 <- CaseStudy2dataset %>%
+  group_by(OverTime) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(OverTime), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Over Time") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 1100))
+
+
+p6 <- CaseStudy2dataset %>%
+  group_by(PerformanceRating) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(PerformanceRating), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Performance Rating") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) + scale_y_continuous(limits = c(0, 1300))
+
+grid.arrange(p1,p2,p3,p4,p5,p6,nrow = 2)
+
+p1 <- CaseStudy2dataset %>%
+  group_by(Department) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(Department), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Department") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ theme(plot.title = element_text(size =10),axis.text.x = element_text(size = 7, angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p2 <- CaseStudy2dataset %>%
+  group_by(JobRole) %>%
+  summarise(counts = n()) %>%
+  ggplot(aes(x = as.factor(JobRole), y = counts)) + geom_bar(stat = 'identity', fill = "blue") + ggtitle("Job Role") +geom_text(aes(label=counts), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25) + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+grid.arrange(p1,p2 ,ncol = 2)
+#Observations :
+#More than 70% of the employees Travel rarely for work.
+#30% of the employees have a high and very high environment satisfaction each.
+#Almost 59% of the employees think they have a High job involvement at work.
+#Again in Job Satisifaction we see that 30% employees have a high and a very high job satisfaction each.
+#More than 70% of the people seem to be working over time.
+#85% of the employees have an excellent performance rating.
+#More than half of the employees work for the R&D department.
+#Majority of the employees work as Sales Executives, Research Scientists and Laboratory Technicians.
+```
+
+```{r}
+#After looking at every feature individually, let's now do some bivariate/multivariate analysis. Here we'll explore the independent variables with respect to the target variable. The objective is to discover hidden relationships between the independent variables and the target variable.
+#Employee Personal Demographics - Numerical Variables
+p1 <- CaseStudy2dataset %>%
+  ggplot(aes(x = Age, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Age") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p2 <- CaseStudy2dataset %>%
+  ggplot(aes(x = DistanceFromHome, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Distance From Home")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p3 <- CaseStudy2dataset %>%
+  ggplot(aes(x = NumCompaniesWorked, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Number of Companies")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p4 <- CaseStudy2dataset %>%
+  ggplot(aes(x = TotalWorkingYears, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Total Working Years")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+#Observations :
+#Younger employees within 25-35 years have a higher attrition rate.
+#We see a lower attrition rate when the Distance from home is within 10 kms. The attrition rate increase post 10kms.
+#The attrition rate tends to be higher with employees who have worked with 5 to 7 companies.
+#Attrition rate seems to be extremely high amongst employees who have a total working experience between 0 to 7 years approximately.
+
+#Employee Billing Rate Demographics - Numerical Variables
+p1 <- CaseStudy2dataset %>%
+  ggplot(aes(x = HourlyRate, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Hourly Rate") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p2 <- CaseStudy2dataset %>%
+  ggplot(aes(x = DailyRate, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Daily Rate") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p3 <- CaseStudy2dataset %>%
+  ggplot(aes(x = MonthlyRate, fill = Attrition)) + geom_density(alpha = 0.5)+ ggtitle("Monthly Rate") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+grid.arrange(p1, p2, p3)
+#Observations :
+#No specific trend observed except for Daily rate where we see two modes. The attrition is highest near 400 whereas the attrition is lowest near 1200.
+
+# Employee Work Demographics - Numerical Variables
+p1 <- CaseStudy2dataset %>%
+  ggplot(aes(x = MonthlyIncome, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Monthly Income") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p2 <- CaseStudy2dataset %>%
+  ggplot(aes(x = PercentSalaryHike, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Percentage Salary Hike") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p3 <- CaseStudy2dataset %>%
+  ggplot(aes(x = YearsAtCompany, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years At Company") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p4 <- CaseStudy2dataset %>%
+  ggplot(aes(x = YearsInCurrentRole, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years in Current Role") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p5 <- CaseStudy2dataset %>%
+  ggplot(aes(x = YearsSinceLastPromotion, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years Since Last Promotion") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p6 <- CaseStudy2dataset %>%
+  ggplot(aes(x = YearsWithCurrManager, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years With Current Manager") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+grid.arrange(p1, p2, p3, p4, p5, p6 , nrow = 3, ncol = 2)
+#Observations :
+#We observe a peak in attrition rate at a monthly income approx. 2500.
+#We also see a peak in attrition rate when the employee is with the company for 0-2 years approx.
+#From the two modes observed in "Years in Current Role" plot we can say that the attrition rate is higher when the employee is in the same role for 0-2 years or 6 years approx.
+#Also, From the two modes observed in "Years with current manager" plot we can say that employee also tends to leave if he is with the same manager for less than 1.5 years or 6 years approximately.
+
+#Employee Personal Demographics - Categorical Variables
+p1 <- CaseStudy2dataset %>%
+  group_by(Gender) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Gender, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Gender") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 20))
+
+
+p2 <- CaseStudy2dataset %>%
+  group_by(Education) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Education, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Education") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 20))
+
+p3 <- CaseStudy2dataset %>%
+  group_by(EducationField) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = EducationField, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Education Field") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p4 <- CaseStudy2dataset %>%
+  group_by(MaritalStatus) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = MaritalStatus, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Marital Status") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p5 <- CaseStudy2dataset %>%
+  group_by(RelationshipSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(RelationshipSatisfaction), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Relationship Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p6 <- CaseStudy2dataset %>%
+  group_by(WorkLifeBalance) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(WorkLifeBalance), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Work Life Balance") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 35))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+#Observations :
+#Attrition Rate is slightly more in Males as compared to Females.
+#18% attrition rate is observed amongst employees have below college education.
+#Attrition rate is very high amongst employees from HR, Marketing and Technical backgrounds.
+#As expected, the attrition rate is very high amongst employees who have a bad work life balance.
+
+#Employee Work Demographics - Categorical Variables
+p1 <- CaseStudy2dataset %>%
+  group_by(BusinessTravel) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = BusinessTravel, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Business Travel") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p2 <- CaseStudy2dataset %>%
+  group_by(EnvironmentSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = EnvironmentSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Environment Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p3 <- CaseStudy2dataset %>%
+  group_by(JobInvolvement) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobInvolvement, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Job Involvement") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 40))
+
+p4 <- CaseStudy2dataset %>%
+  group_by(JobSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Job Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p5 <- CaseStudy2dataset %>%
+  group_by(OverTime) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = OverTime, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Over Time") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 35))
+
+p6 <- CaseStudy2dataset %>%
+  group_by(PerformanceRating) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(PerformanceRating), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Performance Rating") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 20))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+
+p1 <- CaseStudy2dataset %>%
+  group_by(Department) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Department, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Department") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)
+
+p2 <- CaseStudy2dataset %>%
+  group_by(JobRole) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobRole, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "blue") + ggtitle("Attrition Rate - Job Role") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)
+
+
+
+grid.arrange(p1, p2, ncol = 2)
+
+#Observations :
+#Attrition rate is higher amongst people who travel frequently.
+#Its also higher amongst employees who have a low environment satisfaction, low job involvement and low job satisfaction.
+#The attrition rate is almost 30% amongst employees who work over time.
+#Sales department have the highest attrition at 20% whereas Sales Representatives have the highest attrition at 40%.
+```
+####Naive bayes model
+```{r}
+#Split train and test model
+set.seed(6)
+splitPerc = .75
+trainIndices = sample(1:dim(CaseStudy2dataset)[1],round(splitPerc * dim(CaseStudy2dataset)[1]))
+train = CaseStudy2dataset[trainIndices,]
+test = CaseStudy2dataset[-trainIndices,]
+
+model.naive <- naiveBayes(Attrition ~ ., data=train[,-c(1)])
+attrition.pred.naive <- predict(model.naive, test[,-c(1)], type="class")
+confusionMatrix(attrition.pred.naive, test$Attrition)
+
+```
+
+
+####Train model with Naive bayes method and get importance of predictors
+```{r}
+#Prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3, classProbs = TRUE)
+set.seed(345)
+#Train the model
+model.naive.t <- train( Attrition ~ ., data=train[, -c(1)], method="naive_bayes", trControl=control)
+attrition.pred.naive.t <- predict(model.naive.t, test[-c(1)])
+confusionMatrix(attrition.pred.naive.t, test$Attrition)
+#Top 10 Glmnet predictor ranking
+importance.naive.t <- varImp(model.naive.t, scale=FALSE)
+rank.naive.t <- importance.naive.t$importance
+write.csv(rank.naive.t, "rank.naive.t.csv")
+rank.naive.t <- read.csv("rank.naive.t.csv", header=TRUE)
+colnames(rank.naive.t) <- c("Predictors", "Importance")
+rank.naive.t <- rank.naive.t[order(rank.naive.t$Importance, decreasing = TRUE),]
+ggplot(rank.naive.t[1:20,], aes(x=reorder(Predictors, Importance),y=Importance)) + geom_bar(stat = "identity") + coord_flip() + labs(title="Importance of Predictors", x="Predictors", y="Importance") +theme(axis.text.x=element_text(hjust=0.5, vjust=0.5, size = 12))+theme(axis.text.y=element_text(size = 12))
+
+```
+
+####Custom Naive Bayes model
+```{r}
+model.naive.ct <- naiveBayes(Attrition ~ OverTime + YearsAtCompany + YearsInCurrentRole+MonthlyIncome+TotalWorkingYears+YearsWithCurrManager+JobLevel+StockOptionLevel+Age, data=train)
+attrition.pred.naive.ct <- predict(model.naive.ct, test, type="class")
+confusionMatrix(attrition.pred.naive.ct, test$Attrition)
+```
+
+####Train model with knn and get importance of predictors
+```{r}
+#Prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+set.seed(6)
+#Train the model
+model.knn <- train( Attrition ~ ., data=train[, -c(1)], method="knn", trControl=control)
+attrition.pred.knn <- predict(model.knn, test[-c(1)])
+confusionMatrix(attrition.pred.knn, test$Attrition)
+#Top 10 predictor ranking
+importance.knn <- varImp(model.knn, scale=FALSE)
+rank.knn <- importance.knn$importance
+write.csv(rank.knn, "rank.knn.csv")
+rank.knn <- read.csv("rank.knn.csv", header=TRUE)
+colnames(rank.knn) <- c("Predictors", "Importance")
+rank.knn <- rank.knn[order(rank.knn$Importance, decreasing = TRUE),]
+ggplot(rank.knn[1:20,], aes(x=reorder(Predictors, Importance),y=Importance)) + geom_bar(stat = "identity") + coord_flip() + labs(title="Importance of Predictors", x="Predictors", y="Importance") +theme(axis.text.x=element_text(hjust=0.5, vjust=0.5, size = 12))+theme(axis.text.y=element_text(size = 12))
+
+```
+
+####Custom knn model
+
+```{r}
+set.seed(6)
+splitPerc = .75
+trainIndices = sample(1:dim(CaseStudy2dataset)[1],round(splitPerc * dim(CaseStudy2dataset)[1]))
+train = CaseStudy2dataset[trainIndices,]
+test = CaseStudy2dataset[-trainIndices,]
+
+#Create training and test data
+set.seed(8)
+TrainObs <- createDataPartition(y = CaseStudy2dataset$Attrition, p = .60, list = FALSE)
+#Create the training observations for Attrition
+train <- CaseStudy2dataset[TrainObs,]
+#Create the test Observations for Attrition
+test <- CaseStudy2dataset[-TrainObs,]
+
+# k-Nearest Neighbours
+fit_knn <- train(Attrition~.,train,method = 'knn',trControl = trainControl(method = 'repeatedcv',number = 3))
+fit_knn
+Predictions_knn <- predict(fit_knn,test)
+
+#Set the training control method
+trainMethod <- trainControl(method = "repeatedcv", number =  25, repeats = 5, summaryFunction = twoClassSummary, classProbs = TRUE)
+
+fit.knn <- train(Attrition ~., data = train, method = "knn", metric = "Spec", trControl = trainMethod, preProcess = c("center","scale"), tuneLength = 31)
+pred.knn <- predict(fit.knn, test)
+summary(pred.knn)
+confusionMatrix(pred.knn, test$Attrition)
+```
+## Classification Model fit conclusion
+#### Based on the output of both models the KNN model has high Accuracy and Sensitivity but it's specificity is only 32%. The Naive Bayes models meets all the criteria required for Accuracy, Sensitiy, and Specificity all being over 54%.
+
+# We will use customized Naive Bayes methods with all the CaseStudy2dataset set to do the prediction.
+
+```{r}
+# T-test(to reject null hypothesis)
+t.test(PercentSalaryHike~PerformanceRating, data = CaseStudy2dataset)
+
+#Linear Regression Model
+# Converting Character Variable into Numeric Vraiables
+CaseStudy2dataset$BusinessTravel1[CaseStudy2dataset$BusinessTravel== "Non-Travel"] <-1
+CaseStudy2dataset$BusinessTravel1[CaseStudy2dataset$BusinessTravel== "Travel_Rarely"] <-2
+CaseStudy2dataset$BusinessTravel1[CaseStudy2dataset$BusinessTravel== "Travel_Frequently"] <-3
+
+CaseStudy2dataset$Department1[CaseStudy2dataset$Department== "Human Resources"] <-1
+CaseStudy2dataset$Department1[CaseStudy2dataset$Department== "Research & Development"] <-2
+CaseStudy2dataset$Department1[CaseStudy2dataset$Department== "Sales"] <-3
+
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Human Resources"] <-1
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Life Sciences"] <-2
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Marketing"] <-3
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Medical"] <-4
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Other"] <-5
+CaseStudy2dataset$EducationField1[CaseStudy2dataset$EducationField== "Technical Degree"] <-6
+
+
+
+CaseStudy2dataset$Gender1[CaseStudy2dataset$Gender== "Female"] <-1
+CaseStudy2dataset$Gender1[CaseStudy2dataset$Gender== "Male"] <-2
+
+
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Human Resources"] <-1
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Healthcare Representative"] <-2
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Laboratory Technician"] <-3
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Manager"] <-4
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Manufacturing Director"] <-5
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Research Director"] <-6
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Research Scientist"] <-7
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Sales Executive"] <-8
+CaseStudy2dataset$JobRole1[CaseStudy2dataset$JobRole== "Sales Representative"] <-9
+
+CaseStudy2dataset$MaritalStatus1[CaseStudy2dataset$MaritalStatus== "Divorced"] <-1
+CaseStudy2dataset$MaritalStatus1[CaseStudy2dataset$MaritalStatus== "Married"] <-2
+CaseStudy2dataset$MaritalStatus1[CaseStudy2dataset$MaritalStatus== "Single"] <-3
+
+
+CaseStudy2dataset$OverTime1[CaseStudy2dataset$OverTime== "Yes"] <-1
+CaseStudy2dataset$OverTime1[CaseStudy2dataset$OverTime== "No"] <-0
+attach(CaseStudy2dataset)
+Model1 <-Attrition1~Age+BusinessTravel1+DailyRate+Department1+DistanceFromHome+Education+EducationField1+EnvironmentSatisfaction+Gender1+JobRole1+JobSatisfaction+MaritalStatus1+MonthlyIncome+NumCompaniesWorked+OverTime1+PercentSalaryHike+JobInvolvement+PerformanceRating+EnvironmentSatisfaction+TotalWorkingYears+TrainingTimesLastYear+WorkLifeBalance+YearsAtCompany+YearsInCurrentRole+YearsSinceLastPromotion+YearsWithCurrManager
+fit1 <- lm(Model1, data = CaseStudy2dataset)
+summary(fit1)
+# Observation:
+# This Regression model is unfit.It has very low R squared value
+
+Model2 <-Attrition1~EnvironmentSatisfaction+JobSatisfaction+OverTime1+JobInvolvement+BusinessTravel1+JobRole1+MaritalStatus1+TotalWorkingYears
+fit2<- lm(Model2, data = CaseStudy2dataset)
+summary(fit2)
+# Observation:
+# This model has high R squared value,however some of the variables have high p value too so we need to change our set of variables.
+
+Model3 <-Attrition1~OverTime1+TotalWorkingYears
+fit3<- lm(Model3, data = CaseStudy2dataset)
+summary(fit3)
+# Observation:
+#This seems to be the best model with
+
+AIC(fit1)
+AIC(fit2)
+AIC(fit3)
+# Observation:
+# Looking at all the 3 variables, fit1 seems to be the most fit model. It has highest R squared values among all 3 models
+#We found that some factors affect the attrition of employee very much while some factors totall not. The main factors which cause attrition of employee are age of employee, how much business tarvel he make, in which business department he is involved,office distance from home, enviromant satisfaction,gender,JobInvolvement, his Job Satisfaction rate ,his MaritalStatus,Number of Companies he worked, wherther he does overtime or not, his RelationshipSatisfaction, WorklifeBalance, YearsAtCompany, YearsInCurrentRole,Years Since he lost promoted and Years with current manager
+
+#Conclusion
+#The factors which increases attrition rate in employees are: (because of their positive coefficient in Model)
+# More Business Travel
+#Office Distance From Home
+#Worked in more number of companies
+#Need of ovetime to complete work
+#More number in present company
+#If he is not promoted from long time.
+
+#The factors which decreases attrition rate in employees are: (because of their negative coefficient in Model)
+#Higher Age of Employee
+#Good Environment Satisfaction
+#Good Job Involvement
+#Good Job Satisfaction
+#Good Relationship Satisfaction
+#Good Work Life Balance
+#More number of years in Current Role
+#More number of years with Current Manager.
+
+#The factors which adversly affect Attrition Rate means to very high extent are:
+#More Business Travel
+#Office Distance From Home
+#Worked in more number of companies
+#Need of ovetime to complete work
+#Good Environment Satisfaction
+#Good Job Involvement
+#Good Job Satisfaction
+
+# Summary Statistics using Describe()
+describe(CaseStudy2dataset)
+
+# Correlation Tests
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"BusinessTravel1"])
+# Observation: Attrition Rate depend on Business Travel
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"DailyRate"])
+# Observation: Attrition Rate depend a bit on Daily Rate
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"DistanceFromHome"])
+# Observation: Attrition Rate depends on DistanceFromHome 
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"EducationField1"])
+# Observation: Attrition Rate doesnot depend upon Education
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"Gender1"])
+# Observation: Attrition Rate does not Depend upon Gender of Employee
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"HourlyRate"])
+# Observation: Attrition Rate does not Depend upon HourlyRate
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"MaritalStatus1"])
+# Observation: Attrition Rate depend upon MaritalStatus
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"MonthlyIncome"])
+# Observation: Attrition Rate depend upon Monthly Income
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"MonthlyRate"])
+# Observation: Attrition Rate doesnot depend upon Monthly Rate
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"NumCompaniesWorked"])
+# Observation: Attrition Rate doesnot depend much on Number of Companies Worked
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"OverTime1"])
+# Observation: Attrition Rate strongly depend on OverTime
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"PercentSalaryHike"])
+# Observation: Attrition Rate doesnot depend upon PercentSalaryHike too according to coorelation test
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"TotalWorkingYears"])
+# Observation: Attrition Rate depend on Total Working Years
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"YearsAtCompany"])
+# Observation: Attrition Rate depends on YearsAtCompany
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"YearsInCurrentRole"])
+# Observation: AttritionRate deoend on YearsInCurrentRole too
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"YearsSinceLastPromotion"])
+# Observation: Attrition Rate doesnot depend much on YearsSinceLastPromotion
+cor.test(CaseStudy2dataset[,"Attrition1"], CaseStudy2dataset[,"YearsWithCurrManager"])
+# Observation: Attrition Rate depend on Years With Current Manager
+# Conclusion:
+#Our Analysis based on Correlation test shows that Attrition Rate majorly Depends on Business Travel, DailyRate, DistanceFromHome, MaritalStatus, Monthly Income, MonthlyRate, OverTime, TotalWorkingYears, YearsAtCompany, YearsInCurrentRole and YearsWithCurrManager
+```
+
+logistic regression model predicting attrition
+```{r}
+lr.model.reduced <- glm(Attrition ~ BusinessTravel + DistanceFromHome + EnvironmentSatisfaction + JobInvolvement + 
+                          JobSatisfaction + MaritalStatus + NumCompaniesWorked + OverTime + RelationshipSatisfaction +
+                          TotalWorkingYears + TrainingTimesLastYear + YearsSinceLastPromotion,
+                        data = CaseStudy2dataset, family = binomial(link = "logit"))
+
+CaseStudy2CompSetNoAttrition$EnvironmentSatisfaction <- as.factor(CaseStudy2CompSetNoAttrition$EnvironmentSatisfaction)
+CaseStudy2CompSetNoAttrition$JobInvolvement <- as.factor(CaseStudy2CompSetNoAttrition$JobInvolvement)
+CaseStudy2CompSetNoAttrition$JobSatisfaction <- as.factor(CaseStudy2CompSetNoAttrition$JobSatisfaction)
+CaseStudy2CompSetNoAttrition$RelationshipSatisfaction <- as.factor(CaseStudy2CompSetNoAttrition$RelationshipSatisfaction)
+predict.reduced <- predict(lr.model.reduced, newdata = CaseStudy2CompSetNoAttrition, type = "response")
+predictions.cut <- ifelse(predict.reduced > (1 - 0.1917808), "Yes", "No" )
+no.attrition.predictions <- data.frame(ID = CaseStudy2CompSetNoAttrition$ID, Prediction = predictions.cut)
+write.csv(no.attrition.predictions, " Case2PredictionsSwarupananda Attrition.csv", row.names = F)
+```
+linear regression predicting salary
+```{r}
+lm.model.full <- lm(MonthlyIncome ~ ., data = CaseStudy2dataset)
+summary(lm.model.full)
+RSS <- c(crossprod(lm.model.full$residuals))
+MSE <- RSS / length(lm.model.full$residuals)
+RMSE <- sqrt(MSE)
+RMSE
+```
+
+
+linear regression reduced
+```{r}
+lm.model.reduced <- lm(MonthlyIncome ~ BusinessTravel + JobRole + PerformanceRating + TotalWorkingYears + YearsAtCompany + YearsWithCurrManager, 
+                       data = CaseStudy2dataset)
+summary(lm.model.reduced)
+RSS <- c(crossprod(lm.model.reduced$residuals))
+MSE <- RSS / length(lm.model.reduced$residuals)
+RMSE <- sqrt(MSE)
+RMSE
+```
+
+trianing the full linear model
+```{r}
+lm.train.full <- lm(MonthlyIncome ~ ., data = train)
+summary(lm.train.full)
+lm.pred.full <- predict(lm.train.full, newdata = test[,names(test) != "MonthlyIncome"])
+actuals <- test$MonthlyIncome
+predictions <- lm.pred.full
+RMSE <- sqrt(mean((actuals - predictions)^2))
+RMSE
+```
+
+training the reduced model
+```{r}
+lm.train.reduced <- lm(MonthlyIncome ~ BusinessTravel + JobRole + PerformanceRating + TotalWorkingYears + YearsAtCompany + YearsWithCurrManager, 
+                       data = train)
+summary(lm.model.reduced)
+lm.pred.reduced <- predict(lm.train.reduced, newdata = test[,names(test) != "MonthlyIncome"])
+actuals <- test$MonthlyIncome
+predictions <- lm.pred.reduced
+RMSE <- sqrt(mean((actuals - predictions)^2))
+RMSE
+```
+
+selecting best model by RMSE and using entire dataset
+```{r}
+#str(CaseStudy2dataset)
+#str(CaseStudy2CompSetNoSalary)
+#lm.model.reduced <- lm(MonthlyIncome ~ BusinessTravel + JobRole + PerformanceRating + TotalWorkingYears + YearsAtCompany + YearsWithCurrManager, 
+#                       data = CaseStudy2dataset)
+#lm.pred.salary <- predict(lm.model.reduced, newdata = CaseStudy2CompSetNoSalary)
+#no.salary.prediction <- data.frame(ID = CaseStudy2CompSetNoSalary$ID, Prediction = lm.pred.salary)
+#write.csv(no.salary.prediction, "Case2PredictionsSwarupananda Salary.csv", row.names = F)
+```
